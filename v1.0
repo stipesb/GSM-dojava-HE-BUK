@@ -1,0 +1,204 @@
+#include <SoftwareSerial.h>
+#include "Timer.h"
+
+Timer timer;
+Timer timer2;
+
+bool status = true;
+
+
+int broj_poziva = 0;
+
+SoftwareSerial SIM900A(9, 8);  //tx je 8, ne mijenjaj!!! sprzit ces modul
+
+int s1 = 13;  //input senzori
+int s2 = 12;
+int s3 = 11;
+int s4 = 10;
+int i1 = 2;  //indikator ulaza, kada je ulaz kratko spojen ledica zasvjetli
+int i2 = 3;  //indikator poziva, kada se izvrsava pozivanje ova ledica zasvjetli
+
+void setup() {
+
+  Serial.begin(9600);   // Setting the baud rate of Serial Monitor (Arduino)
+  SIM900A.begin(9600);  // Setting the baud rate of GSM Module
+
+
+  Serial.println("SIM800L uspostavlja vezu, pricekati 10 sekundi");
+
+  SIM900A.println("AT+CMGF=1");
+  delay(1000);
+  SIM900A.println("AT+CNMI=1,2,0,0,0");
+  delay(1000);
+  SIM900A.println("AT+CMGL=\"REC UNREAD\"");
+
+  delay(10000);
+
+  SIM900A.println("AT");
+  updateSerial();
+
+  delay(100);
+
+
+
+
+
+
+  pinMode(s1, INPUT);
+  digitalWrite(s1, HIGH);
+
+  pinMode(s2, INPUT);
+  digitalWrite(s2, HIGH);
+
+  pinMode(s3, INPUT);
+  digitalWrite(s3, HIGH);
+
+  pinMode(s4, INPUT);
+  digitalWrite(s4, HIGH);
+
+  pinMode(i1, OUTPUT);
+  digitalWrite(i1, HIGH);
+
+  pinMode(i2, OUTPUT);
+  digitalWrite(i1, HIGH);
+
+  delay(1000);
+
+  digitalWrite(i1, LOW);
+  digitalWrite(i2, LOW);
+}
+
+
+void loop() {
+
+  Serial.println("sada sam u loopu");
+
+  ReadMessage();
+
+
+
+
+
+  bool r1 = digitalRead(s1);
+  bool r2 = digitalRead(s2);
+  bool r3 = digitalRead(s3);
+  bool r4 = digitalRead(s4);
+
+
+
+  while ((digitalRead(s1) == LOW) || (digitalRead(s2) == LOW) || (digitalRead(s3) == LOW) || (digitalRead(s4) == LOW)) {
+
+    ReadMessage();
+
+    digitalWrite(i1, HIGH);
+
+    if (timer.state() == STOPPED) {
+      timer.start();
+    }
+
+
+    if (timer.read() > 15000) {
+
+      digitalWrite(i2, HIGH);
+      //napravi poziv
+
+      if (status == true) {
+
+        MakeCall();
+
+        ReadMessage();
+
+        delay(10000);
+      }
+
+      //ako poziv nije uspostavljen ponovo pokusati svakih 15 sek
+      //kada se poziv uspostavi neka se izadje iz petlje
+
+      break;
+    }
+  }
+
+
+  timer.stop();
+  digitalWrite(i1, LOW);
+  delay(100);
+}
+
+
+
+
+
+
+void MakeCall() {
+
+  Serial.println("SIM900A zapocinje poziv");
+  SIM900A.println("ATD+ +38763006982;");
+
+  delay(20000);
+
+  SIM900A.println("ATH");  //hang up
+  Serial.println("SIM900A poklapa poziv");
+  delay(1000);
+}
+
+
+
+void ReadMessage() {
+
+  char incomingByte;
+  String inputString = "";
+
+  if (SIM900A.available()) {
+    inputString = "";
+    delay(1000);
+    while (SIM900A.available()) {
+      incomingByte = SIM900A.read();
+      inputString += incomingByte;
+    }
+    delay(100);
+
+    Serial.print("input : ");
+    Serial.print(inputString);
+    Serial.println("   end");
+    inputString.toUpperCase();
+
+    if (inputString.indexOf("ZAUSTAVI") > 0) {
+      Serial.println("zaustavljam zvonjenje");
+      status = false;
+      SendMessage();
+    }
+
+    else if (inputString.indexOf("POKRENI") > 0)
+
+    {
+      Serial.println("pokrecem sustav");
+
+      status = true;
+      SendMessage();
+    }
+  }
+
+  delay(500);
+}
+
+
+void SendMessage() {
+  delay(1000);
+  SIM900A.println("AT+CMGS=\"+38763006982\"");
+  updateSerial();
+  SIM900A.print("Naredba zaprimljena");  //text content
+  updateSerial();
+  SIM900A.write(26);
+}
+
+
+
+void updateSerial() {
+  delay(500);
+  while (Serial.available()) {
+    SIM900A.write(Serial.read());  //Forward what Serial received to Software Serial Port
+  }
+  while (SIM900A.available()) {
+    Serial.write(SIM900A.read());  //Forward what Software Serial received to Serial Port
+  }
+}
